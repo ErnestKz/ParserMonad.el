@@ -1,4 +1,5 @@
-;;; ParserMonad.el --- Parser monad that parses Lisp lists      -*- lexical-binding: t; -*-
+;; -*- lexical-binding: t; -*-
+;;; ParserMonad.el --- Parser monad that parses Lisp lists
 
 ;; Copyright (C) 2021  Ernests Kuznecovs
 
@@ -23,7 +24,7 @@
   (monad
    :type git
    :host github
-   :repo "cute-jumper/monad.el"))
+   :repo "ernestkz/monad.el"))
 
 (require 'cl-lib)
 
@@ -44,6 +45,9 @@
 ;; Parser-return :: { a } -> Parser a
 (defun Parser-return (v) (Parser (lambda (inp) (Just (cons v inp)))))
 
+;; Parser-fmap :: (a -> b) -> Parser a -> Parser b
+(defun Parser-fmap (f p) (Parser-bind p (lambda (a) (Parser-return (funcall f a)))))
+
 ;; Parser-bind :: { Parser a, (a -> Parser b) } -> Parser b
 (defun Parser-bind (p f)
   (Parser (lambda (inp) (pcase (Parser-run p inp)
@@ -63,17 +67,20 @@
 ;; Parser-plus :: { Parser a, Parser a } -> Parser a
 (defun Parser-plus (p1 p2) (Parser (lambda (inp) (Maybe-plus (Parser-run p1 inp) (Parser-run p2 inp)))))
 
-;; Parser-lispItem :: { LispItem } -> Parser LispItem
-(defun Parser-lispItem (item) (Parser-sat (lambda (x) (equal item x))))
+;; Parser-plus-n :: { List Parser a } -> Parser a
+(defun Parser-plus-n (&rest ps) (cl-reduce 'Parser-plus ps))
+
+;; Parser-equal :: { LispItem } -> Parser LispItem
+(defun Parser-equal (item) (Parser-sat (lambda (x) (equal item x))))
 
 ;; Parser-list :: { LispList } -> Parser LispList
-(defun Parser-list (list)
+(defun Parser-list-equal (list)
   (if list
-  (monad-do Parser
-    (x  (Parser-lispItem (car list)))
-    (xs (Parser-list     (cdr list)))
-    (return (cons x xs)))
-  (Parser-return nil)))
+      (monad-do Parser
+	(x  (Parser-equal (car list)))
+	(xs (Parser-list-equal (cdr list)))
+	(return (cons x xs)))
+    (Parser-return nil)))
 
 ;; Parser-many :: { Parser a } -> Parser [a]
 (defun Parser-many (p)
@@ -84,12 +91,14 @@
      (return (cons x xs)))
    (Parser-return nil)))
 
+(defun Parser-oneornone (p) (Parser-plus p (Parser-return nil)))
+
 ;; Parser-many :: { Parser a } -> Parser [a]
 (defun Parser-many1 (p)
   (monad-do Parser
-     (x p)
-     (xs (Parser-many p))
-     (return (cons x xs))))
+    (x p)
+    (xs (Parser-many p))
+    (return (cons x xs))))
 
 ;; Parser-sepby :: { Parser a, Parser b } -> Parser [a]
 (defun Parser-sepby (p sep)
@@ -119,8 +128,42 @@
 ;; Parser-string :: Parser String
 (setq Parser-string (Parser-sat 'stringp))
 
+(setq Parser-quoted-symbol (Parser-sat (lambda (x) (and
+						    (listp x)
+						    (eq 'quote (car x))
+						    (symbolp (cadr x))
+						    (null (cddr x))))))
+
+(setq Parser-quoted-symbol-unwrap (Parser-fmap
+				   (lambda (x) (cadr x))
+				   Parser-quoted-symbol))
+
+(setq Parser-unquoted-list (Parser-sat (lambda (x) (and
+						    (listp x)
+						    (not (eq 'quote (car x)))))))
+
+(setq Parser-quoted-list (Parser-sat (lambda (x) (and
+						  (listp x)
+						  (eq 'quote (car x))
+						  (listp (cadr x))
+						  (null (cddr x))))))
+
+(setq Parser-quoted-list-unwrap (Parser-fmap
+				 (lambda (x) (cadr x))
+				 Parser-quoted-list))
+
+;; Runs p on the next item (a list), returns result, throws away the rest that's left in the list.
+;; Fails the whole parse if fails.
+;; Parser-nest :: { Parser a } -> Parser a
+(defun Parser-nest (p) (monad-do Parser
+			 (x Parser-list)
+			 (pcase (Parser-run p x)
+			   (`(Just . ,pair) (Parser-return (car pair)))
+			   (_               Parser-zero))))
+
 ;; Maybe-plus :: { Maybe a, Maybe a } -> Maybe a
 (defun Maybe-plus (m1 m2)
   (pcase (list m1 m2)
     (`((Just . ,x)  ,_)   m1)
     (`(Nothing      ,x)   m2)))
+
