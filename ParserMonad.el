@@ -19,12 +19,13 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-(use-package monad
-  :straight
-  (monad
-   :type git
-   :host github
-   :repo "ernestkz/monad.el"))
+(require 'monad)
+;; (use-package monad
+;;   :straight
+;;   (monad
+;;    :type git
+;;    :host github
+;;    :repo "ernestkz/monad.el"))
 
 (require 'cl-lib)
 
