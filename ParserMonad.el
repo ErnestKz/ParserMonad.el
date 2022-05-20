@@ -167,5 +167,5 @@
     (`((Just . ,x)  ,_)   m1)
     (`(Nothing      ,x)   m2)))
 
-(provide 'KeyWork)
+(provide 'ParserMonad)
 ;;; KeyWork.el ends here
